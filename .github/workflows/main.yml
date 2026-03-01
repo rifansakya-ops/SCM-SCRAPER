@@ -1,0 +1,33 @@
+name: Nusadaya Scraper
+
+on:
+  workflow_dispatch: # Supaya bisa dijalankan manual dengan tombol
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Copy kode ke mesin GitHub
+        uses: actions/checkout@v3
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Library
+        run: pip install requests beautifulsoup4
+
+      - name: Jalankan Scraper
+        env:
+          USERNAME: ${{ secrets.USERNAME }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+        run: python scraper.py
+
+      - name: Upload Hasil ke Repositori
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add hasil_scrape.txt
+          git commit -m "Update data hasil scrape" || exit 0
+          git push
