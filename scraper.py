@@ -1,62 +1,63 @@
 import requests
 import os
 import json
+import gspread
+from google.oauth2.service_account import Credentials
 
-# 1. Ambil kredensial dari GitHub Secrets
+# 1. Setup Google Sheets
+gcp_json = os.getenv("GCP_SERVICE_ACCOUNT_KEY")
+scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+creds = Credentials.from_service_account_info(json.loads(gcp_json), scopes=scopes)
+client = gspread.authorize(creds)
+
+# Masukkan ID Sheet kamu di sini
+SHEET_ID = "1AdveM0acH4q37GKnDYdyJ6l9p6m757zOp0UvquwxBjw"
+sh = client.open_by_key(SHEET_ID)
+worksheet = sh.get_worksheet(0)
+
+# 2. Login Nusadaya
 user = os.getenv("USERNAME")
 pw = os.getenv("PASSWORD")
-
 session = requests.Session()
 login_url = "https://scm.nusadaya.net/login"
-
-# URL dari filteran yang kamu temukan (Tanpa parameter di belakangnya agar lebih bersih)
 data_url = "https://scm.nusadaya.net/izin-prinsip/get-data"
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-}
-
-payload = {
-    "username": user,
-    "password": pw
-}
-
-# Parameter filter dari URL yang kamu berikan
+headers = {"User-Agent": "Mozilla/5.0"}
 params = {
-    "draw": "2",
-    "start": "0",
-    "length": "100",  # Mengambil 100 data pertama
-    "bidang": "01",
-    "tahun": "2026",
-    "status_filter": "approved"
+    "draw": "2", "start": "0", "length": "100",
+    "bidang": "01", "tahun": "2026", "status_filter": "approved"
 }
 
 try:
-    print("Mencoba login...")
-    # Proses Login
-    login_response = session.post(login_url, data=payload, headers=headers)
+    print("Sedang login ke Nusadaya...")
+    session.post(login_url, data={"username": user, "password": pw}, headers=headers)
     
-    if login_response.status_code == 200:
-        print(f"Login Berhasil. Mencoba mengambil data filter...")
+    print("Mengambil data filter...")
+    response = session.get(data_url, params=params, headers=headers)
+    
+    if response.status_code == 200:
+        rows = response.json().get('data', [])
         
-        # 2. Mengambil data menggunakan URL filter
-        # Kita gunakan session.get karena URL yang kamu lampirkan adalah metode GET
-        response = session.get(data_url, params=params, headers=headers)
+        # Siapkan data untuk dikirim ke Sheet
+        final_data = []
+        for item in rows:
+            # Sesuaikan kunci kolom ini dengan hasil JSON dari web
+            final_data.append([
+                item.get('nomor_info'),
+                item.get('nilai_info'),
+                item.get('project'),
+                item.get('status'),
+                item.get('tgl_approve')
+            ])
         
-        if response.status_code == 200:
-            # Karena ini adalah get-data, hasilnya biasanya dalam format JSON
-            data_json = response.json()
-            
-            # 3. Simpan hasil ke file .json agar struktur tabelnya terjaga
-            with open("hasil_scrape.json", "w", encoding="utf-8") as f:
-                json.dump(data_json, f, indent=4)
-            
-            total_data = data_json.get('recordsTotal', 0)
-            print(f"Scraping Berhasil! Menemukan {total_data} data.")
-        else:
-            print(f"Gagal mengambil data filter. Status: {response.status_code}")
+        # Masukkan ke Sheet mulai dari baris ke-2 (Baris 1 biasanya Judul)
+        worksheet.clear() # Bersihkan dulu jika ingin data segar
+        worksheet.update('A1', [["Nomor", "Nilai", "Project", "Status", "Tanggal"]]) # Header
+        worksheet.update('A2', final_data)
+        
+        print(f"Berhasil! {len(final_data)} data masuk ke Google Sheets.")
     else:
-        print("Gagal login. Periksa Username/Password di GitHub Secrets.")
+        print("Gagal ambil data.")
 
 except Exception as e:
     print(f"Error: {e}")
