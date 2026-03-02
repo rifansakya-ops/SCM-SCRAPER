@@ -1,7 +1,9 @@
 name: Nusadaya Scraper
 
 on:
-  workflow_dispatch: # Supaya bisa dijalankan manual dengan tombol
+  workflow_dispatch: # Jalankan manual
+  schedule:
+    - cron: '0 0 * * *' # Otomatis jalan setiap jam 7 pagi WIB (opsional)
 
 jobs:
   run-scraper:
@@ -16,18 +18,12 @@ jobs:
           python-version: '3.9'
 
       - name: Install Library
-        run: pip install requests beautifulsoup4
+        run: |
+          pip install -r requirements.txt
 
       - name: Jalankan Scraper
         env:
           USERNAME: ${{ secrets.USERNAME }}
           PASSWORD: ${{ secrets.PASSWORD }}
+          GCP_SERVICE_ACCOUNT_KEY: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
         run: python scraper.py
-
-      - name: Upload Hasil ke Repositori
-        run: |
-          git config --global user.name "GitHub Action"
-          git config --global user.email "action@github.com"
-          git add hasil_scrape.txt
-          git commit -m "Update data hasil scrape" || exit 0
-          git push
