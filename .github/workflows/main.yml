@@ -1,35 +1,35 @@
 name: Nusadaya Auto Scraper
 
 on:
-  workflow_dispatch: # Supaya bisa dijalankan manual dengan tombol
+  workflow_dispatch:
   schedule:
-    - cron: '0 1 * * *' # Berjalan otomatis setiap jam 8 pagi WIB
+    - cron: '0 1 * * *' # Jalan otomatis jam 8 pagi WIB
 
 jobs:
   run-scraper:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Izin sangat penting agar GitHub bisa menyimpan file data.json
+      contents: write # IZIN PENTING
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Install Chrome & Selenium
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y google-chrome-stable
           pip install selenium webdriver-manager requests
 
-      - name: Menjalankan Scraper
+      - name: Jalankan Scraper
         env:
           USERNAME: ${{ secrets.USERNAME }}
           PASSWORD: ${{ secrets.PASSWORD }}
         run: python scraper.py
 
-      - name: Menyimpan hasil ke repositori
+      - name: Simpan Data ke Repo
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add data.json
-          git commit -m "Update data.json [skip ci]" || exit 0
+          git commit -m "Update data.json" || exit 0
           git push
