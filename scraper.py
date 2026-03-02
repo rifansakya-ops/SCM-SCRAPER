@@ -10,59 +10,72 @@ try:
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     creds = Credentials.from_service_account_info(json.loads(gcp_json), scopes=scopes)
     client = gspread.authorize(creds)
-
-    SHEET_ID = "17ChoZhU5PImYt0J-3Y7F7l24yeQTABZ-EvZww32FFGs"
-    sh = client.open_by_key(SHEET_ID)
+    sh = client.open_by_key("17ChoZhU5PImYt0J-3Y7F7l24yeQTABZ-EvZww32FFGs")
     worksheet = sh.get_worksheet(0)
 except Exception as e:
     print(f"Gagal koneksi ke Google Sheets: {e}")
 
-# 2. Login Nusadaya
+# 2. Login & Scrape Nusadaya
 user = os.getenv("USERNAME")
 pw = os.getenv("PASSWORD")
 session = requests.Session()
-headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-
-login_url = "https://scm.nusadaya.net/login"
-data_url = "https://scm.nusadaya.net/izin-prinsip/get-data"
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "X-Requested-With": "XMLHttpRequest" # Memberitahu server ini permintaan data
+}
 
 try:
     print("Mencoba login...")
-    session.post(login_url, data={"username": user, "password": pw}, headers=headers)
+    session.post("https://scm.nusadaya.net/login", data={"username": user, "password": pw}, headers=headers)
     
-    # Kumpulkan data dari tahun 2025 dan 2026 sekaligus agar tidak kosong
     all_rows = []
+    # Kita cek 2025 dan 2026 seperti di browser
     for tahun in ["2025", "2026"]:
-        print(f"Mengecek data tahun {tahun}...")
+        print(f"Mengambil data tahun {tahun}...")
+        # Parameter disesuaikan dengan gambar image_4f5fa6.png (Semua Bidang & Semua Status)
         params = {
-            "draw": "2", "start": "0", "length": "500",
-            "bidang": "01", "tahun": tahun, "status_filter": ""
+            "draw": "1",
+            "start": "0",
+            "length": "100",
+            "bidang": "",         # Kosong = Semua Bidang (seperti di gambar)
+            "tahun": tahun,       # Sesuai pilihan tahun
+            "status_filter": ""   # Kosong = Semua Status (termasuk Menunggu Verifikasi)
         }
-        resp = session.get(data_url, params=params, headers=headers)
+        
+        resp = session.get("https://scm.nusadaya.net/izin-prinsip/get-data", params=params, headers=headers)
+        
         if resp.status_code == 200:
-            data_tahun = resp.json().get('data', [])
-            all_rows.extend(data_tahun)
-            print(f"Ditemukan {len(data_tahun)} data di tahun {tahun}")
+            try:
+                data_json = resp.json()
+                rows = data_json.get('data', [])
+                all_rows.extend(rows)
+                print(f"Berhasil menarik {len(rows)} data dari tahun {tahun}")
+            except:
+                print(f"Format data tahun {tahun} tidak dikenali.")
+        else:
+            print(f"Server menolak permintaan tahun {tahun}. Status: {resp.status_code}")
 
-    # 3. Kirim ke Google Sheet
+    # 3. Update Google Sheet
     worksheet.clear()
-    header = ["Nomor Info", "Nilai", "Project", "Keterangan", "Status", "Tgl Approve"]
-    final_data = [header]
+    header = ["Nomor Izin Prinsip", "Nilai / Jenis", "Project", "Keterangan", "Status", "Tgl Approve"]
+    final_values = [header]
     
     for item in all_rows:
-        final_data.append([
-            item.get('nomor_info'), item.get('nilai_info'),
-            item.get('project'), item.get('keterangan'),
-            item.get('status'), item.get('tgl_approve')
+        # Kita ambil data sesuai kolom di gambar image_4f5fa6.png
+        final_values.append([
+            item.get('nomor_info', ''),
+            item.get('nilai_info', ''),
+            item.get('project', ''),
+            item.get('keterangan', ''),
+            item.get('status', ''),
+            item.get('tgl_approve', '')
         ])
     
     if len(all_rows) > 0:
-        worksheet.update(range_name='A1', values=final_data)
-        print(f"TOTAL BERHASIL: {len(all_rows)} data terkirim ke Google Sheets!")
+        worksheet.update(range_name='A1', values=final_values)
+        print(f"DONE! {len(all_rows)} data sudah masuk ke Google Sheet.")
     else:
-        # Jika benar-benar kosong, isi sheet dengan pesan ini agar kita tahu robotnya kerja
-        worksheet.update(range_name='A1', values=[header, ["TIDAK ADA DATA DITEMUKAN DI WEB"]])
-        print("Peringatan: Tidak ada data ditemukan di Nusadaya untuk 2025 & 2026.")
+        print("Robot jalan, tapi tidak menemukan data apapun di web.")
 
 except Exception as e:
-    print(f"Terjadi error: {e}")
+    print(f"Terjadi error fatal: {e}")
